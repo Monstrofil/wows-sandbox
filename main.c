@@ -1,0 +1,227 @@
+/*
+ * main.c — WoWS Shell: embedded Python 2.7 with WoWS module loader.
+ *
+ * Usage:
+ *   ./wows_shell                  — Interactive REPL with game modules
+ *   ./wows_shell script.py        — Execute script with game modules
+ *   ./wows_shell -c "code"        — Execute code string
+ */
+#include "Python.h"
+#include "wows_stubs/wows_stubs.h"
+#include "wows_importer/wows_importer.h"
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+/*
+ * Replace sys.path so that:
+ *  - Pure Python modules come from scripts.zip (via our meta_path importer)
+ *  - C extension modules are static builtins (no lib-dynload needed)
+ *
+ * We set sys.path to an empty list and clear sys.path_hooks and
+ * sys.path_importer_cache so the old filesystem importers don't interfere.
+ */
+static int
+clear_filesystem_imports(void)
+{
+    PyObject *sys_mod, *new_path, *empty;
+
+    sys_mod = PyImport_ImportModule("sys");
+    if (sys_mod == NULL)
+        return -1;
+
+    /* All C extensions are now static builtins; no need for lib-dynload */
+    new_path = PyList_New(0);
+
+    if (PyObject_SetAttrString(sys_mod, "path", new_path) < 0) {
+        Py_DECREF(new_path); Py_DECREF(sys_mod); return -1;
+    }
+    Py_DECREF(new_path);
+
+    /* sys.path_hooks = [] */
+    empty = PyList_New(0);
+    if (empty == NULL) { Py_DECREF(sys_mod); return -1; }
+    if (PyObject_SetAttrString(sys_mod, "path_hooks", empty) < 0) {
+        Py_DECREF(empty); Py_DECREF(sys_mod); return -1;
+    }
+    Py_DECREF(empty);
+
+    /* sys.path_importer_cache = {} */
+    empty = PyDict_New();
+    if (empty == NULL) { Py_DECREF(sys_mod); return -1; }
+    if (PyObject_SetAttrString(sys_mod, "path_importer_cache", empty) < 0) {
+        Py_DECREF(empty); Py_DECREF(sys_mod); return -1;
+    }
+    Py_DECREF(empty);
+
+    Py_DECREF(sys_mod);
+    return 0;
+}
+
+/* Default path to scripts.zip (same directory as binary) */
+static char *
+find_scripts_zip(const char *argv0)
+{
+    static char path[4096];
+    char *slash;
+
+    /* Try data/ relative to the binary */
+    strncpy(path, argv0, sizeof(path) - 30);
+    path[sizeof(path) - 30] = '\0';
+    slash = strrchr(path, '/');
+    if (slash != NULL) {
+        strcpy(slash + 1, "data/scripts.zip");
+    } else {
+        strcpy(path, "data/scripts.zip");
+    }
+
+    if (access(path, R_OK) == 0)
+        return path;
+
+    /* Try data/ in current directory */
+    strcpy(path, "data/scripts.zip");
+    if (access(path, R_OK) == 0)
+        return path;
+
+    /* Legacy: scripts.zip in current directory */
+    strcpy(path, "scripts.zip");
+    if (access(path, R_OK) == 0)
+        return path;
+
+    return NULL;
+}
+
+
+int
+main(int argc, char **argv)
+{
+    const char *zip_path;
+    const char *script_path = NULL;
+    const char *code_string = NULL;
+    int i;
+
+    /* Parse arguments */
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
+            code_string = argv[++i];
+        } else if (strcmp(argv[i], "--zip") == 0 && i + 1 < argc) {
+            /* Allow overriding scripts.zip path */
+            i++; /* handled below */
+        } else if (argv[i][0] != '-') {
+            script_path = argv[i];
+            break;
+        }
+    }
+
+    /* Find scripts.zip */
+    zip_path = NULL;
+    for (i = 1; i < argc - 1; i++) {
+        if (strcmp(argv[i], "--zip") == 0) {
+            zip_path = argv[i + 1];
+            break;
+        }
+    }
+    if (zip_path == NULL) {
+        zip_path = find_scripts_zip(argv[0]);
+    }
+
+    /* Initialize Python */
+    Py_SetProgramName(argv[0]);
+    Py_Initialize();
+    PySys_SetArgvEx(argc, argv, 0);
+
+    /* Disable GC during bulk module loading to avoid traversing
+     * partially-constructed objects. Re-enable after BWPersonality loads. */
+    {
+        PyObject *gc = PyImport_ImportModule("gc");
+        if (gc) {
+            PyObject_CallMethod(gc, "disable", NULL);
+            Py_DECREF(gc);
+        } else {
+            PyErr_Clear();
+        }
+    }
+
+    /* Install stubs first (before any imports) */
+    if (wows_stubs_install() < 0) {
+        fprintf(stderr, "Failed to install WoWS stubs\n");
+        if (PyErr_Occurred()) PyErr_Print();
+        Py_Finalize();
+        return 1;
+    }
+
+    /* Install WoWS importer */
+    if (zip_path == NULL) {
+        fprintf(stderr, "Warning: scripts.zip not found. "
+                "Use --zip <path> or place it next to the binary.\n");
+    } else {
+        if (wows_importer_install(zip_path) < 0) {
+            fprintf(stderr, "Failed to install WoWS importer for %s\n",
+                    zip_path);
+            if (PyErr_Occurred()) PyErr_Print();
+            Py_Finalize();
+            return 1;
+        }
+    }
+
+    /* Clear filesystem import paths so all future imports use scripts.zip */
+    if (zip_path != NULL) {
+        if (clear_filesystem_imports() < 0) {
+            fprintf(stderr, "Failed to clear filesystem import paths\n");
+            if (PyErr_Occurred()) PyErr_Print();
+            Py_Finalize();
+            return 1;
+        }
+    }
+
+    /* Try to import BWPersonality */
+    if (zip_path != NULL) {
+        PyObject *bwp = PyImport_ImportModule("BWPersonality");
+        if (bwp != NULL) {
+            fprintf(stderr, "BWPersonality loaded.\n");
+            Py_DECREF(bwp);
+        } else {
+            fprintf(stderr, "Warning: BWPersonality import failed:\n");
+            PyErr_Print();
+            PyErr_Clear();
+        }
+    }
+
+    /* Re-enable GC after bulk loading is done */
+    {
+        PyObject *gc = PyImport_ImportModule("gc");
+        if (gc) {
+            PyObject_CallMethod(gc, "enable", NULL);
+            PyObject_CallMethod(gc, "collect", NULL);
+            Py_DECREF(gc);
+        } else {
+            PyErr_Clear();
+        }
+    }
+
+    /* Execute mode */
+    if (code_string != NULL) {
+        /* -c mode */
+        int result = PyRun_SimpleString(code_string);
+        Py_Finalize();
+        return result != 0 ? 1 : 0;
+    } else if (script_path != NULL) {
+        /* Script mode */
+        FILE *fp = fopen(script_path, "r");
+        if (fp == NULL) {
+            perror(script_path);
+            Py_Finalize();
+            return 1;
+        }
+        int result = PyRun_SimpleFileExFlags(fp, script_path, 1, NULL);
+        Py_Finalize();
+        return result != 0 ? 1 : 0;
+    } else {
+        /* REPL mode */
+        fprintf(stderr, "WoWS Shell — Python 2.7 with game module support\n");
+        fprintf(stderr, "Type 'import ModuleName' to load game modules.\n\n");
+        PyRun_InteractiveLoopFlags(stdin, "<stdin>", NULL);
+        Py_Finalize();
+        return 0;
+    }
+}

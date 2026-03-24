@@ -1,0 +1,23 @@
+# Build artifacts
+*.o
+wows_shell
+
+# Game data (large binary, not tracked)
+data/scripts.zip
+
+# Python bytecode
+*.pyc
+__pycache__/
+
+# Claude Code local settings
+.claude/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
