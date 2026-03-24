@@ -202,8 +202,17 @@ wows_stubs_install(void)
     }
 
     /*
-     * Pre-import stdlib modules that scripts.zip shadows with broken
-     * versions. Runs before the WoWS importer is installed.
+     * Pre-import stdlib modules that scripts.zip shadows.
+     *
+     * ctypes: the zip contains the Windows build whose obfuscated
+     *   bytecode has a broken local scope (UnboundLocalError on
+     *   'argtypes') because obfuscation guards route into dead code
+     *   on Linux that references uninitialized locals.
+     *
+     * functools, collections, struct: the zip versions decrypt and
+     *   load fine individually, but cause segfaults during the full
+     *   BWPersonality import chain. The game ships subtly modified
+     *   versions of these that interact badly with our environment.
      */
     {
         static const char *preload[] = {
