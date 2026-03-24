@@ -134,11 +134,23 @@ UNUSED static PyMethodDef _empty_methods[] = { END };
  * them from GC's tracked set entirely.  Since they are immortal (kept
  * alive for the lifetime of the process), they never need collection.
  */
-/* No-op traversal — GC calls this but it never visits any references,
- * so visit_decref/visit_reachable never reach our leaked dicts. */
-UNUSED static int _nop_traverse(PyObject *self, visitproc visit, void *arg)
+/*
+ * Custom tp_new that untracks every instance from GC immediately after
+ * creation. This is inherited by subclasses, so game code that does
+ * `class MyShip(BigWorld.Entity)` also produces untracked instances.
+ *
+ * Why: subtype_traverse visits instance __dict__ BEFORE calling the
+ * base tp_traverse. Our stub instances can create deep reference chains
+ * (FlexBase.__getattr__ returns new instances), causing GC stack overflow.
+ * Untracking prevents GC from ever traversing these objects.
+ */
+UNUSED static PyObject *
+_stub_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-    return 0;
+    PyObject *self = PyType_GenericNew(type, args, kwds);
+    if (self != NULL)
+        PyObject_GC_UnTrack(self);
+    return self;
 }
 
 static inline void
@@ -146,11 +158,12 @@ gc_untrack_class_and_dict(PyObject *cls, PyObject *dict)
 {
     if (cls  != NULL) {
         PyObject_GC_UnTrack(cls);
-        /* Replace tp_traverse with a no-op so GC never walks into
-         * instances of this class. Instances stay GC-tracked (allocated
-         * with GC headers) but traverse is harmless. */
-        if (PyType_Check(cls))
-            ((PyTypeObject *)cls)->tp_traverse = _nop_traverse;
+        if (PyType_Check(cls)) {
+            PyTypeObject *tp = (PyTypeObject *)cls;
+            /* Override tp_new so all instances (including subclass
+             * instances) are immediately untracked from GC. */
+            tp->tp_new = _stub_tp_new;
+        }
     }
     if (dict != NULL) PyObject_GC_UnTrack(dict);
 }

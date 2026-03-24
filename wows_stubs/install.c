@@ -94,6 +94,9 @@ PyObject *init_WaveSystem(void);
 PyObject *init_ManyObjects(void);
 PyObject *init_WeatherApi(void);
 PyObject *init_Notification(void);
+PyObject *init_WatcherLoggers(void);
+PyObject *init_ctypes(void);
+PyObject *init_ctypes_util(void);
 PyObject *init_msvcrt(void);
 PyObject *init__subprocess(void);
 PyObject *init__winreg(void);
@@ -184,6 +187,9 @@ wows_stubs_install(void)
     INIT_STUB(EventQueuesManager);
     INIT_STUB(Workarounds);
     INIT_STUB(Notification);
+    INIT_STUB(WatcherLoggers);
+    INIT_STUB(ctypes);
+    INIT_STUB(ctypes_util);
     INIT_STUB(msvcrt);
     INIT_STUB(_subprocess);
     INIT_STUB(_winreg);
@@ -258,35 +264,8 @@ wows_stubs_install(void)
                 PyErr_Clear();
             }
         }
-        /* Patch _ctypes with Windows-only symbols */
-        {
-            static PyMethodDef win_ctypes_methods[] = {
-                {"FormatError",    (PyCFunction)nop_str, METH_VARARGS, NULL},
-                {"LoadLibrary",    (PyCFunction)nop_int, METH_VARARGS, NULL},
-                {"_check_HRESULT", (PyCFunction)nop_int, METH_VARARGS, NULL},
-                {"get_last_error", (PyCFunction)nop_int, METH_VARARGS, NULL},
-                {"set_last_error", (PyCFunction)nop_int, METH_VARARGS, NULL},
-                {NULL}
-            };
-            PyObject *m = PyImport_ImportModule("_ctypes");
-            if (m) {
-                PyMethodDef *md;
-                if (!PyObject_HasAttrString(m, "FUNCFLAG_STDCALL"))
-                    PyModule_AddIntConstant(m, "FUNCFLAG_STDCALL", 0);
-                for (md = win_ctypes_methods; md->ml_name; md++) {
-                    if (!PyObject_HasAttrString(m, md->ml_name)) {
-                        PyObject *fn = PyCFunction_NewEx(md, NULL, NULL);
-                        if (fn) {
-                            PyObject_SetAttrString(m, md->ml_name, fn);
-                            Py_DECREF(fn);
-                        }
-                    }
-                }
-                Py_DECREF(m);
-            } else {
-                PyErr_Clear();
-            }
-        }
+        /* _ctypes patching removed — ctypes is now a C stub module
+         * so the zip's broken Windows ctypes never loads. */
     }
 
     /* Patch _socket.socket type with Windows-only 'ioctl' method.

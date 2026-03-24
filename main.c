@@ -32,7 +32,7 @@ int FormatMessageW(void) { return 0; }
  * sys.path_importer_cache so the old filesystem importers don't interfere.
  */
 static int
-clear_filesystem_imports(void)
+clear_filesystem_imports(const char *argv0)
 {
     PyObject *sys_mod, *new_path, *empty;
 
@@ -40,8 +40,21 @@ clear_filesystem_imports(void)
     if (sys_mod == NULL)
         return -1;
 
-    /* All C extensions are now static builtins; no need for lib-dynload */
-    new_path = PyList_New(0);
+    /* Set sys.path to only contain helpers/ directory (relative to binary).
+     * All C extensions are static builtins, game modules come from zip. */
+    {
+        char helpers_dir[4096];
+        const char *slash;
+        strncpy(helpers_dir, argv0, sizeof(helpers_dir) - 40);
+        helpers_dir[sizeof(helpers_dir) - 40] = '\0';
+        slash = strrchr(helpers_dir, '/');
+        if (slash != NULL)
+            strcpy((char *)slash + 1, "helpers");
+        else
+            strcpy(helpers_dir, "helpers");
+        new_path = PyList_New(1);
+        PyList_SET_ITEM(new_path, 0, PyString_FromString(helpers_dir));
+    }
 
     if (PyObject_SetAttrString(sys_mod, "path", new_path) < 0) {
         Py_DECREF(new_path); Py_DECREF(sys_mod); return -1;
@@ -140,15 +153,9 @@ main(int argc, char **argv)
     Py_Initialize();
     PySys_SetArgvEx(argc, argv, 0);
 
-    /* Disable GC during bulk module loading. Stub classes and their
-     * dicts are untracked (gc_untrack_class_and_dict), but game code
-     * subclasses inherit tp_traverse that walks into stub objects.
-     * Re-enabled after BWPersonality loads. */
-    {
-        PyObject *gc = PyImport_ImportModule("gc");
-        if (gc) { PyObject_CallMethod(gc, "disable", NULL); Py_DECREF(gc); }
-        else PyErr_Clear();
-    }
+    /* GC is safe — stub classes override tp_new to untrack all instances
+     * (see _stub_tp_new in common.h), preventing GC from traversing
+     * deep FlexBase reference chains that cause stack overflow. */
 
     /* Install stubs first (before any imports) */
     if (wows_stubs_install() < 0) {
@@ -174,7 +181,7 @@ main(int argc, char **argv)
 
     /* Clear filesystem import paths so all future imports use scripts.zip */
     if (zip_path != NULL) {
-        if (clear_filesystem_imports() < 0) {
+        if (clear_filesystem_imports(argv[0]) < 0) {
             fprintf(stderr, "Failed to clear filesystem import paths\n");
             if (PyErr_Occurred()) PyErr_Print();
             Py_Finalize();
@@ -195,12 +202,15 @@ main(int argc, char **argv)
         }
     }
 
-    /* Re-enable GC after bulk loading */
-    {
-        PyObject *gc = PyImport_ImportModule("gc");
-        if (gc) { PyObject_CallMethod(gc, "enable", NULL); Py_DECREF(gc); }
-        else PyErr_Clear();
-    }
+
+    /* Load helpers — import wows_helpers and call setup() to inject
+     * find_module/find_class/etc. into __builtin__. The helpers/
+     * directory was added to sys.path in clear_filesystem_imports(). */
+    PyRun_SimpleString(
+        "try:\n"
+        "    import wows_helpers; wows_helpers.setup()\n"
+        "except ImportError: pass\n"
+    );
 
     /* Execute mode */
     if (code_string != NULL) {

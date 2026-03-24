@@ -104,7 +104,10 @@ init_BigWorld(void)
             "    def __call__(self, *a, **kw): return self\n",
             Py_file_input, d, d);
         PyObject *cls = PyDict_GetItemString(d, "_Component");
-        gc_untrack_class_and_dict(cls, d);
+        /* Only untrack, do NOT override tp_new — _Component inherits
+         * from str and needs str.__new__ to construct properly. */
+        if (cls) PyObject_GC_UnTrack(cls);
+        PyObject_GC_UnTrack(d);
         if (cls) {
             PyObject *val = PyObject_CallFunction(cls, "s", "client");
             if (val) PyModule_AddObject(m, "component", val);

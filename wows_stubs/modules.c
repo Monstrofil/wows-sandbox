@@ -451,7 +451,12 @@ STUB_MODULE(Core, "Core")
 STUB_MODULE(Vary, "Vary")
 STUB_MODULE(CAT, "CAT")
 STUB_MODULE(Trails, "Trails")
-STUB_MODULE(server_constants, "server_constants")
+/* server_constants — needs WatcherLoggerName class */
+PyObject *init_server_constants(void) {
+    PyObject *m = make_module("server_constants", _empty_methods, "server_constants stub");
+    if (m) PyModule_AddObject(m, "WatcherLoggerName", get_flex_base_type());
+    return m;
+}
 STUB_MODULE(FlagsPreloader, "FlagsPreloader")
 STUB_MODULE(PhysicsManager, "PhysicsManager")
 STUB_MODULE(StaticSceneMgr, "StaticSceneMgr")
@@ -462,8 +467,43 @@ STUB_MODULE(ManyObjects, "ManyObjects")
 STUB_MODULE(WeatherApi, "WeatherApi")
 STUB_MODULE(Notification, "Notification")
 
+/* WatcherLoggers — engine logging system */
+static PyMethodDef WatcherLoggers_methods[] = {
+    NOP_VARARGS(LOG_WATCHER_DEBUG),
+    NOP_VARARGS(LOG_WATCHER_INFO),
+    NOP_VARARGS(LOG_WATCHER_WARNING),
+    NOP_VARARGS(LOG_WATCHER_ERROR),
+    END
+};
+STUB_MODULE_METHODS(WatcherLoggers, "WatcherLoggers", WatcherLoggers_methods)
+
 /* Windows-specific stdlib modules that game scripts import */
 STUB_MODULE(msvcrt, "msvcrt")
+
+/* ctypes — the zip's ctypes is the Windows build whose obfuscated bytecode
+ * has broken guard paths on Linux. Only uuid uses it, for windll.rpcrt4.
+ * We stub it with the attrs uuid needs. */
+PyObject *init_ctypes(void) {
+    PyObject *m = make_module("ctypes", _empty_methods, "ctypes stub");
+    if (m) {
+        PyModule_AddObject(m, "windll", get_flex_base_type());
+        PyModule_AddObject(m, "cdll", get_flex_base_type());
+        PyModule_AddObject(m, "CDLL", get_flex_base_type());
+        PyModule_AddObject(m, "c_byte", get_flex_base_type());
+        PyModule_AddObject(m, "c_char_p", get_flex_base_type());
+        PyModule_AddObject(m, "c_int", get_flex_base_type());
+        PyModule_AddObject(m, "c_uint", get_flex_base_type());
+        PyModule_AddObject(m, "c_void_p", get_flex_base_type());
+        PyModule_AddObject(m, "c_wchar_p", get_flex_base_type());
+        PyModule_AddObject(m, "Structure", get_flex_base_type());
+        PyModule_AddObject(m, "POINTER", get_flex_base_type());
+        PyModule_AddObject(m, "byref", get_flex_base_type());
+        PyModule_AddObject(m, "sizeof", get_flex_base_type());
+        PyModule_AddObject(m, "create_string_buffer", get_flex_base_type());
+    }
+    return m;
+}
+STUB_MODULE(ctypes_util, "ctypes.util")
 /* _subprocess - Windows process creation */
 static PyMethodDef _subprocess_methods[] = {
     NOP_INT(CreateProcess),
