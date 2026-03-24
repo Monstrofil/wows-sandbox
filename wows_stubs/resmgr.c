@@ -5,7 +5,7 @@
 
 static PyObject *DataSection_class = NULL;
 
-static PyObject *
+PyObject *
 ResMgr_openSection(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     if (DataSection_class == NULL) {

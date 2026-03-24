@@ -6,6 +6,9 @@
 /* Forward declaration — Event_Event is defined in event.c */
 PyObject *Event_Event(PyObject *self, PyObject *args, PyObject *kwargs);
 
+/* Forward declaration — ResMgr_openSection is defined in resmgr.c */
+PyObject *ResMgr_openSection(PyObject *self, PyObject *args, PyObject *kwargs);
+
 static PyMethodDef BigWorld_methods[] = {
     NOP_VARARGS(callback),
     NOP_VARARGS(cancelCallback),
@@ -18,8 +21,8 @@ static PyMethodDef BigWorld_methods[] = {
     NOP_VARARGS(projection),
     NOP_VARARGS(camera),
     NOP_VARARGS(dcursor),
-    NOP_VARARGS(wg_openCodedSection),
-    NOP_VARARGS(wg_openSection),
+    {"wg_openCodedSection", (PyCFunction)ResMgr_openSection, METH_VARARGS|METH_KEYWORDS, NULL},
+    {"wg_openSection", (PyCFunction)ResMgr_openSection, METH_VARARGS|METH_KEYWORDS, NULL},
     NOP_VARARGS(screenSize),
     NOP_VARARGS(screenWidth),
     NOP_VARARGS(screenHeight),
@@ -41,7 +44,7 @@ static PyMethodDef BigWorld_methods[] = {
     NOP_VARARGS(disconnect),
     NOP_VARARGS(quit),
     NOP_VARARGS(savePreferences),
-    NOP_VARARGS(loadPreferences),
+    {"loadPreferences", (PyCFunction)ResMgr_openSection, METH_VARARGS|METH_KEYWORDS, NULL},
     NOP_VARARGS(clearEntitiesAndSpaces),
     NOP_VARARGS(createSpace),
     NOP_VARARGS(addSpaceGeometryMapping),

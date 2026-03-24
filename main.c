@@ -202,6 +202,29 @@ main(int argc, char **argv)
         }
     }
 
+    /* Simulate the engine boot: call BigWorld.loadPreferences() and store
+     * the result in ModsShell.gPrefs.  In the real engine, this is done
+     * by the C++ startup code before any Python mod code runs. */
+    {
+        PyObject *bw = PyImport_ImportModule("BigWorld");
+        if (bw) {
+            PyObject *prefs = PyObject_CallMethod(bw, "loadPreferences", NULL);
+            if (prefs && prefs != Py_None) {
+                PyObject *ms = PyImport_ImportModule("ModsShell");
+                if (ms) {
+                    PyObject_SetAttrString(ms, "gPrefs", prefs);
+                    Py_DECREF(ms);
+                } else {
+                    PyErr_Clear();
+                }
+            }
+            Py_XDECREF(prefs);
+            Py_DECREF(bw);
+        } else {
+            PyErr_Clear();
+        }
+    }
+
 
     /* Load helpers — import wows_helpers and call setup() to inject
      * find_module/find_class/etc. into __builtin__. The helpers/
