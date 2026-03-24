@@ -27,7 +27,7 @@ PyObject *init_EnvironmentManager(void);
 PyObject *init_Settings(void);
 PyObject *init_SceneGraph(void);
 PyObject *init_UserPreferences(void);
-PyObject *init_UserPreferencesAPI(void);
+/* UserPreferencesAPI loads from scripts.zip */
 PyObject *init_VoiceoverSystem(void);
 PyObject *init_Workarounds(void);
 PyObject *init_EventQueuesManager(void);
@@ -40,7 +40,6 @@ PyObject *init_GameParams_Defaults(void);
 PyObject *init_Mathemagic(void);
 PyObject *init_Camera(void);
 PyObject *init_CameraUtils(void);
-PyObject *init_SSE_SSEClientUtils(void);
 PyObject *init__sha3(void);
 PyObject *init__crypto(void);
 PyObject *init__counter(void);
@@ -143,7 +142,7 @@ wows_stubs_install(void)
 
     /* Preferences */
     INIT_STUB(UserPreferences);
-    INIT_STUB(UserPreferencesAPI);
+    /* UserPreferencesAPI loads from scripts.zip */
     INIT_STUB(PreferenceSystem);
 
     /* Networking / web */
@@ -175,7 +174,7 @@ wows_stubs_install(void)
     INIT_STUB(EventQueuesManager);
     INIT_STUB(Workarounds);
     INIT_STUB(Notification);
-    INIT_STUB(SSE_SSEClientUtils);
+    /* SSE.SSEClientUtils loads from scripts.zip */
 
     /* Crypto / hashing C extensions */
     INIT_STUB(_sha3);

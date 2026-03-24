@@ -162,12 +162,7 @@ PyObject *init_UserPreferences(void) {
     return m;
 }
 
-/* ── UserPreferencesAPI ───────────────────────────────────────────────── */
-
-static PyMethodDef UserPreferencesAPI_methods[] = {
-    NOP_VARARGS(upGetAttribute), NOP_VARARGS(upSetAttribute), END
-};
-STUB_MODULE_METHODS(UserPreferencesAPI, "UserPreferencesAPI", UserPreferencesAPI_methods)
+/* UserPreferencesAPI — loads from scripts.zip, no stub needed */
 
 /* ── VoiceoverSystem ──────────────────────────────────────────────────── */
 
@@ -377,33 +372,7 @@ static PyMethodDef CameraUtils_methods[] = {
 };
 STUB_MODULE_METHODS(CameraUtils, "Camera.CameraUtils", CameraUtils_methods)
 
-/* ── SSE.SSEClientUtils ──────────────────────────────────────────────── */
-
-static PyMethodDef SSE_SSEClientUtils_methods[] = {
-    NOP_VARARGS(getConditionInfo),       NOP_VARARGS(addConditions),
-    NOP_VARARGS(sortConditionsByProgress), NOP_VARARGS(fillFilters),
-    NOP_STR(getTaskName),                NOP_STR(getEpicName),
-    NOP_STR(getChainName),              NOP_VARARGS(updateClaimedRewards),
-    NOP_VARARGS(updateClaimedRewardsInBattleResultsSource),
-    NOP_LIST(iterPersistentEntities),    NOP_VARARGS(getLinkData),
-    NOP_VARARGS(getConditionCategory),   NOP_VARARGS(createPersistentSSETask),
-    NOP_VARARGS(createConditionsIds),    NOP_VARARGS(createConditionSetEntity),
-    NOP_VARARGS(fillFilterForEntity),    NOP_VARARGS(getConditionByType),
-    NOP_VARARGS(clearConditions),        NOP_VARARGS(getConditionProgress),
-    NOP_VARARGS(getConditionName),       NOP_VARARGS(getRewardInfo),
-    NOP_VARARGS(getTaskDescription),     NOP_VARARGS(iterConditions),
-    NOP_VARARGS(createPersistentVSEventTask),
-    NOP_VARARGS(createPersistentShipAcesTask),
-    NOP_VARARGS(createPersistentStrategicActionsTask),
-    NOP_VARARGS(createPersistentSSEBonus),
-    END
-};
-PyObject *init_SSE_SSEClientUtils(void) {
-    PyObject *m = make_module("SSE.SSEClientUtils", SSE_SSEClientUtils_methods,
-                              "SSE.SSEClientUtils stub");
-    if (m) PyModule_AddObject(m, "TaskStatus", get_flex_base_type());
-    return m;
-}
+/* SSE.SSEClientUtils — loads from scripts.zip, no stub needed */
 
 /* ── Crypto / SHA3 C extensions ───────────────────────────────────────── */
 
