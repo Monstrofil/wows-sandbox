@@ -32,7 +32,8 @@ get_flex_base_type(void)
             Py_file_input, d, d);
         _FlexBaseType = PyDict_GetItemString(d, "_FlexBase");
         Py_XINCREF(_FlexBaseType);
-        /* d intentionally leaked — class methods reference names in d */
+        /* Remove class and dict from GC tracking — they are immortal */
+        gc_untrack_class_and_dict(_FlexBaseType, d);
     }
     Py_XINCREF(_FlexBaseType);
     return _FlexBaseType;

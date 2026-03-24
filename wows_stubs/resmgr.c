@@ -40,6 +40,7 @@ ResMgr_openSection(PyObject *self, PyObject *args, PyObject *kwargs)
             Py_file_input, d, d);
         DataSection_class = PyDict_GetItemString(d, "DataSection");
         Py_XINCREF(DataSection_class);
+        gc_untrack_class_and_dict(DataSection_class, d);
     }
     if (DataSection_class == NULL)
         Py_RETURN_NONE;

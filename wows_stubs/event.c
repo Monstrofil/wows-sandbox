@@ -36,6 +36,7 @@ Event_Event(PyObject *self, PyObject *args, PyObject *kwargs)
             Py_file_input, d, d);
         Event_class = PyDict_GetItemString(d, "Event");
         Py_XINCREF(Event_class);
+        gc_untrack_class_and_dict(Event_class, d);
     }
 
     if (Event_class == NULL)

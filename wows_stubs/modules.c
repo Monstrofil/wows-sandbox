@@ -65,6 +65,9 @@ PyObject *init_Locale(void) {
             "    def __call__(self, *a, **kw): return _TranslatorObj()\n"
             "_translator = _Translator()\n",
             Py_file_input, d, d);
+        /* Untrack both classes and the dict from GC */
+        gc_untrack_class_and_dict(PyDict_GetItemString(d, "_TranslatorObj"), d);
+        gc_untrack_class_and_dict(PyDict_GetItemString(d, "_Translator"), NULL);
         PyObject *inst = PyDict_GetItemString(d, "_translator");
         if (inst) {
             Py_INCREF(inst);
@@ -240,6 +243,7 @@ PyObject *init_SpatialUI(void) {
                 "        return 0\n",
                 Py_file_input, d, d);
             PyObject *cls = PyDict_GetItemString(d, "Params");
+            gc_untrack_class_and_dict(cls, d);
             if (cls) {
                 Py_INCREF(cls);
                 PyModule_AddObject(m, "Params", cls);
@@ -298,6 +302,7 @@ PyObject *init_PreferenceSystem(void) {
             "    def __str__(self): return ''\n",
             Py_file_input, d, d);
         PyObject *cls = PyDict_GetItemString(d, "_DataHub");
+        gc_untrack_class_and_dict(cls, d);
         if (cls) {
             static const char *hubs[] = {
                 "dataHub", "direct", "classID", "event", "applyPending", NULL
@@ -340,6 +345,7 @@ PyObject *init_GameParams_Defaults(void) {
         "    def __iter__(self): return iter(self.__dir__())\n",
         Py_file_input, d, d);
     PyObject *cls = PyDict_GetItemString(d, "_ModifierParams");
+    gc_untrack_class_and_dict(cls, d);
     if (cls != NULL) {
         PyObject *instance = PyObject_CallObject(cls, NULL);
         if (instance != NULL)

@@ -59,6 +59,7 @@ Math_create(PyObject *self, PyObject *args, PyObject *kwargs)
             Py_file_input, d, d);
         MathObj_class = PyDict_GetItemString(d, "MathObj");
         Py_XINCREF(MathObj_class);
+        gc_untrack_class_and_dict(MathObj_class, d);
     }
     if (MathObj_class == NULL) Py_RETURN_NONE;
     return PyObject_Call(MathObj_class, args ? args : PyTuple_New(0), kwargs);

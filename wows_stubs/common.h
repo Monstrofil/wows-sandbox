@@ -119,6 +119,28 @@ UNUSED static PyMethodDef _empty_methods[] = { END };
 #define INIT_STUB(name) \
     if (!init_##name()) goto err
 
+/* ── GC-safety helper ─────────────────────────────────────────────────── */
+
+/*
+ * Untrack a class created by PyRun_String and its enclosing dict from
+ * the cyclic GC.  Heap types (created via Python `class` statements)
+ * have Py_TPFLAGS_HAVE_GC and a tp_traverse that walks back into the
+ * dict used as globals/locals for PyRun_String.  If that dict is leaked
+ * (which we do on purpose to keep method closures alive), GC's
+ * visit_decref segfaults because it encounters objects in an
+ * inconsistent state.
+ *
+ * Calling PyObject_GC_UnTrack on both the class and the dict removes
+ * them from GC's tracked set entirely.  Since they are immortal (kept
+ * alive for the lifetime of the process), they never need collection.
+ */
+static inline void
+gc_untrack_class_and_dict(PyObject *cls, PyObject *dict)
+{
+    if (cls  != NULL) PyObject_GC_UnTrack(cls);
+    if (dict != NULL) PyObject_GC_UnTrack(dict);
+}
+
 /* ── FlexBase type ────────────────────────────────────────────────────── */
 
 /*
