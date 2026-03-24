@@ -40,7 +40,9 @@ clean:
 python: $(PYTHON_SRC)/libpython2.7.a $(PYTHON_SRC)/lib/python2.7
 
 $(PYTHON_SRC)/libpython2.7.a:
-	cd $(PYTHON_SRC) && ./configure --disable-shared && $(MAKE) -j$$(nproc)
+	cd $(PYTHON_SRC) && ./configure --disable-shared
+	cd $(PYTHON_SRC) && bash ../../scripts/setup_modules.sh
+	cd $(PYTHON_SRC) && $(MAKE) -j$$(nproc)
 
 # Create lib/python2.7 -> Lib so PYTHONHOME works with source tree
 $(PYTHON_SRC)/lib/python2.7:
