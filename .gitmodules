@@ -1,0 +1,4 @@
+[submodule "3rdparty/cpython"]
+	path = 3rdparty/cpython
+	url = https://github.com/python/cpython.git
+	shallow = true

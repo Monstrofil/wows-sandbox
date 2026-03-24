@@ -148,7 +148,22 @@ main(int argc, char **argv)
         zip_path = find_scripts_zip(argv[0]);
     }
 
-    /* Initialize Python */
+    /* Initialize Python.
+     * Set PYTHONHOME to 3rdparty/cpython/Lib so encodings and other
+     * bootstrap modules are found. Py_NoSiteFlag skips site.py. */
+    {
+        static char pylib[4096];
+        const char *slash;
+        strncpy(pylib, argv[0], sizeof(pylib) - 50);
+        pylib[sizeof(pylib) - 50] = '\0';
+        slash = strrchr(pylib, '/');
+        if (slash != NULL)
+            strcpy((char *)slash + 1, "3rdparty/cpython");
+        else
+            strcpy(pylib, "3rdparty/cpython");
+        Py_SetPythonHome(pylib);
+        Py_NoSiteFlag = 1;
+    }
     Py_SetProgramName(argv[0]);
     Py_Initialize();
     PySys_SetArgvEx(argc, argv, 0);

@@ -1,4 +1,4 @@
-PYTHON_SRC = /tmp/Python-2.7.18
+PYTHON_SRC = 3rdparty/cpython
 CC = gcc
 CFLAGS = -I$(PYTHON_SRC)/Include -I$(PYTHON_SRC) -I. -O2 -Wall
 LDFLAGS = -Wl,--export-dynamic -L$(PYTHON_SRC) -lpython2.7 -lpthread -ldl -lutil -lm -lz -lssl -lcrypto -lffi
@@ -35,4 +35,16 @@ $(ZIP_OBJ): zip_reader/zip_reader.h
 clean:
 	rm -f $(OBJS) wows_shell
 
-.PHONY: clean
+# Build Python 2.7.18 static library from submodule.
+# Run once after cloning: make python
+python: $(PYTHON_SRC)/libpython2.7.a $(PYTHON_SRC)/lib/python2.7
+
+$(PYTHON_SRC)/libpython2.7.a:
+	cd $(PYTHON_SRC) && ./configure --disable-shared && $(MAKE) -j$$(nproc)
+
+# Create lib/python2.7 -> Lib so PYTHONHOME works with source tree
+$(PYTHON_SRC)/lib/python2.7:
+	mkdir -p $(PYTHON_SRC)/lib
+	ln -sfn ../Lib $(PYTHON_SRC)/lib/python2.7
+
+.PHONY: clean python

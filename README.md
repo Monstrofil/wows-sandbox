@@ -17,24 +17,18 @@ The result: `BWPersonality` (the game's main entry point) loads with ~3000 modul
 
 ### Prerequisites
 
-Build requires GCC and Python 2.7.18 source (for headers + static library):
-
-```bash
-# Download and build Python 2.7.18 (one-time setup)
-cd /tmp
-wget https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
-tar xf Python-2.7.18.tar.xz
-cd Python-2.7.18
-# Enable static modules in Modules/Setup (uncomment array, math, _struct, etc.)
-./configure --prefix=/opt/python27-wows
-make -j$(nproc)
-sudo make install
-```
+Build requires GCC, zlib, libssl, libffi development headers.
 
 ### Build
 
 ```bash
+git clone --recurse-submodules https://github.com/Monstrofil/wows-sandbox.git
 cd wows-sandbox
+
+# Build Python 2.7.18 static library (one-time, from submodule)
+make python
+
+# Build wows_shell
 make
 ```
 
@@ -44,16 +38,16 @@ Place your `scripts.zip` in the `data/` directory, then:
 
 ```bash
 # Interactive REPL
-PYTHONHOME=/opt/python27-wows ./wows_shell
+PYTHONHOME=3rdparty/cpython ./wows_shell
 
 # Execute a script
-PYTHONHOME=/opt/python27-wows ./wows_shell test_extract.py
+PYTHONHOME=3rdparty/cpython ./wows_shell test_extract.py
 
 # One-liner
-PYTHONHOME=/opt/python27-wows ./wows_shell -c 'import BWPersonality; print dir(BWPersonality)'
+PYTHONHOME=3rdparty/cpython ./wows_shell -c 'import BWPersonality; print dir(BWPersonality)'
 
 # Use a different scripts.zip
-PYTHONHOME=/opt/python27-wows ./wows_shell --zip /path/to/scripts.zip
+PYTHONHOME=3rdparty/cpython ./wows_shell --zip /path/to/scripts.zip
 ```
 
 ## REPL helpers
