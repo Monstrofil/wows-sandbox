@@ -130,12 +130,22 @@ main(int argc, char **argv)
     Py_Initialize();
     PySys_SetArgvEx(argc, argv, 0);
 
-    /* Disable GC during bulk module loading to avoid traversing
-     * partially-constructed objects. Re-enable after BWPersonality loads. */
+    /* Disable GC permanently. Our stub objects (FlexBase, MathObj, etc.)
+     * are created via PyRun_String and their tp_traverse walks into
+     * leaked dicts, causing visit_decref to segfault. Since this tool
+     * is short-lived, GC is unnecessary. */
     {
         PyObject *gc = PyImport_ImportModule("gc");
         if (gc) {
             PyObject_CallMethod(gc, "disable", NULL);
+            PyObject_CallMethod(gc, "set_threshold", "iii", 0, 0, 0);
+            /* Monkey-patch gc.enable and gc.collect to prevent game
+             * scripts from re-enabling GC. */
+            PyRun_SimpleString(
+                "import gc as _gc\n"
+                "_gc.enable = lambda: None\n"
+                "_gc.collect = lambda *a: 0\n"
+            );
             Py_DECREF(gc);
         } else {
             PyErr_Clear();
@@ -187,17 +197,6 @@ main(int argc, char **argv)
         }
     }
 
-    /* Re-enable GC after bulk loading is done */
-    {
-        PyObject *gc = PyImport_ImportModule("gc");
-        if (gc) {
-            PyObject_CallMethod(gc, "enable", NULL);
-            PyObject_CallMethod(gc, "collect", NULL);
-            Py_DECREF(gc);
-        } else {
-            PyErr_Clear();
-        }
-    }
 
     /* Execute mode */
     if (code_string != NULL) {
