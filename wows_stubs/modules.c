@@ -461,3 +461,39 @@ STUB_MODULE(WaveSystem, "WaveSystem")
 STUB_MODULE(ManyObjects, "ManyObjects")
 STUB_MODULE(WeatherApi, "WeatherApi")
 STUB_MODULE(Notification, "Notification")
+
+/* Windows-specific stdlib modules that game scripts import */
+STUB_MODULE(msvcrt, "msvcrt")
+/* _subprocess - Windows process creation */
+static PyMethodDef _subprocess_methods[] = {
+    NOP_INT(CreateProcess),
+    NOP_INT(WaitForSingleObject),
+    NOP_INT(GetExitCodeProcess),
+    NOP_INT(TerminateProcess),
+    NOP_INT(GetStdHandle),
+    NOP_INT(GetCurrentProcess),
+    NOP_INT(DuplicateHandle),
+    NOP_INT(CreatePipe),
+    NOP_VARARGS(GetModuleFileName),
+    NOP_VARARGS(GetVersion),
+    NOP_VARARGS(CloseHandle),
+    END
+};
+PyObject *init__subprocess(void) {
+    PyObject *m = make_module("_subprocess", _subprocess_methods, "_subprocess stub");
+    if (m) {
+        add_int(m, "CREATE_NEW_CONSOLE", 0x10);
+        add_int(m, "CREATE_NEW_PROCESS_GROUP", 0x200);
+        add_int(m, "STD_INPUT_HANDLE", -10);
+        add_int(m, "STD_OUTPUT_HANDLE", -11);
+        add_int(m, "STD_ERROR_HANDLE", -12);
+        add_int(m, "SW_HIDE", 0);
+        add_int(m, "INFINITE", -1);
+        add_int(m, "WAIT_OBJECT_0", 0);
+        add_int(m, "DUPLICATE_SAME_ACCESS", 2);
+        add_int(m, "STARTF_USESTDHANDLES", 0x100);
+        add_int(m, "STARTF_USESHOWWINDOW", 1);
+    }
+    return m;
+}
+STUB_MODULE(_winreg, "_winreg")

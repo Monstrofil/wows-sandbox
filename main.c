@@ -14,6 +14,16 @@
 #include <unistd.h>
 
 /*
+ * Dummy Windows API symbols. The game's ctypes (from scripts.zip) is the
+ * Windows build and does ctypes.windll.kernel32.GetLastError etc. On Linux,
+ * CDLL(None) resolves symbols from the main binary via dlsym. We export
+ * these dummies so the resolution succeeds.
+ */
+int GetLastError(void) { return 0; }
+void SetLastError(int e) { (void)e; }
+int FormatMessageW(void) { return 0; }
+
+/*
  * Replace sys.path so that:
  *  - Pure Python modules come from scripts.zip (via our meta_path importer)
  *  - C extension modules are static builtins (no lib-dynload needed)
@@ -130,9 +140,15 @@ main(int argc, char **argv)
     Py_Initialize();
     PySys_SetArgvEx(argc, argv, 0);
 
-    /* GC is now safe — stub classes and their enclosing dicts are
-     * untracked from GC via PyObject_GC_UnTrack() in the stub init
-     * functions (see gc_untrack_class_and_dict in common.h). */
+    /* Disable GC during bulk module loading. Stub classes and their
+     * dicts are untracked (gc_untrack_class_and_dict), but game code
+     * subclasses inherit tp_traverse that walks into stub objects.
+     * Re-enabled after BWPersonality loads. */
+    {
+        PyObject *gc = PyImport_ImportModule("gc");
+        if (gc) { PyObject_CallMethod(gc, "disable", NULL); Py_DECREF(gc); }
+        else PyErr_Clear();
+    }
 
     /* Install stubs first (before any imports) */
     if (wows_stubs_install() < 0) {
@@ -179,6 +195,12 @@ main(int argc, char **argv)
         }
     }
 
+    /* Re-enable GC after bulk loading */
+    {
+        PyObject *gc = PyImport_ImportModule("gc");
+        if (gc) { PyObject_CallMethod(gc, "enable", NULL); Py_DECREF(gc); }
+        else PyErr_Clear();
+    }
 
     /* Execute mode */
     if (code_string != NULL) {

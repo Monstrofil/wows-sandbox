@@ -134,10 +134,24 @@ UNUSED static PyMethodDef _empty_methods[] = { END };
  * them from GC's tracked set entirely.  Since they are immortal (kept
  * alive for the lifetime of the process), they never need collection.
  */
+/* No-op traversal — GC calls this but it never visits any references,
+ * so visit_decref/visit_reachable never reach our leaked dicts. */
+UNUSED static int _nop_traverse(PyObject *self, visitproc visit, void *arg)
+{
+    return 0;
+}
+
 static inline void
 gc_untrack_class_and_dict(PyObject *cls, PyObject *dict)
 {
-    if (cls  != NULL) PyObject_GC_UnTrack(cls);
+    if (cls  != NULL) {
+        PyObject_GC_UnTrack(cls);
+        /* Replace tp_traverse with a no-op so GC never walks into
+         * instances of this class. Instances stay GC-tracked (allocated
+         * with GC headers) but traverse is harmless. */
+        if (PyType_Check(cls))
+            ((PyTypeObject *)cls)->tp_traverse = _nop_traverse;
+    }
     if (dict != NULL) PyObject_GC_UnTrack(dict);
 }
 

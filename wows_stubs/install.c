@@ -6,6 +6,13 @@
  */
 #include "common.h"
 
+/* Fake sys.getwindowsversion() — returns (6, 1, 7601, 2, "Service Pack 1") */
+static PyObject *
+fake_getwindowsversion(PyObject *self)
+{
+    return Py_BuildValue("(iiiss)", 6, 1, 7601, 2, "Service Pack 1");
+}
+
 /* ── Forward declarations for init functions ──────────────────────────── */
 
 /* Major engine modules (separate .c files) */
@@ -87,6 +94,9 @@ PyObject *init_WaveSystem(void);
 PyObject *init_ManyObjects(void);
 PyObject *init_WeatherApi(void);
 PyObject *init_Notification(void);
+PyObject *init_msvcrt(void);
+PyObject *init__subprocess(void);
+PyObject *init__winreg(void);
 
 
 /* ── Public API ───────────────────────────────────────────────────────── */
@@ -174,6 +184,9 @@ wows_stubs_install(void)
     INIT_STUB(EventQueuesManager);
     INIT_STUB(Workarounds);
     INIT_STUB(Notification);
+    INIT_STUB(msvcrt);
+    INIT_STUB(_subprocess);
+    INIT_STUB(_winreg);
     /* SSE.SSEClientUtils loads from scripts.zip */
 
     /* Crypto / hashing C extensions */
@@ -202,29 +215,151 @@ wows_stubs_install(void)
     }
 
     /*
-     * Pre-import stdlib modules that scripts.zip shadows.
-     *
-     * ctypes: the zip contains the Windows build whose obfuscated
-     *   bytecode has a broken local scope (UnboundLocalError on
-     *   'argtypes') because obfuscation guards route into dead code
-     *   on Linux that references uninitialized locals.
-     *
-     * functools, collections, struct: the zip versions decrypt and
-     *   load fine individually, but cause segfaults during the full
-     *   BWPersonality import chain. The game ships subtly modified
-     *   versions of these that interact badly with our environment.
+     * Fake Windows environment for the game's scripts.
+     * The game client is a Windows executable — scripts.zip contains
+     * Windows-specific code (ctypes with windll/kernel32, os.name checks).
+     * We fake the platform so obfuscation guards and platform branches
+     * evaluate as they would in the real game client.
      */
     {
-        static const char *preload[] = {
-            "functools", "collections", "struct", "ctypes", NULL
-        };
-        const char **p;
-        for (p = preload; *p; p++) {
-            PyObject *m = PyImport_ImportModule(*p);
-            if (m != NULL) Py_DECREF(m);
-            else PyErr_Clear();
+        PyObject *os_mod = PyImport_ImportModule("os");
+        PyObject *sys_mod = PyImport_ImportModule("sys");
+        if (os_mod) {
+            PyObject_SetAttrString(os_mod, "name",
+                                   PyString_FromString("nt"));
+            Py_DECREF(os_mod);
+        }
+        if (sys_mod) {
+            PyObject_SetAttrString(sys_mod, "platform",
+                                   PyString_FromString("win32"));
+            PyObject_SetAttrString(sys_mod, "dllhandle",
+                                   PyInt_FromLong(0));
+            /* sys.getwindowsversion() */
+            {
+                static PyMethodDef gwv_def = {
+                    "getwindowsversion", (PyCFunction)fake_getwindowsversion,
+                    METH_NOARGS, NULL
+                };
+                PyObject *fn = PyCFunction_NewEx(&gwv_def, NULL, NULL);
+                if (fn) {
+                    PyObject_SetAttrString(sys_mod, "getwindowsversion", fn);
+                    Py_DECREF(fn);
+                }
+            }
+            Py_DECREF(sys_mod);
+        }
+        /* WindowsError — alias to OSError */
+        {
+            PyObject *bi = PyImport_ImportModule("__builtin__");
+            if (bi) {
+                PyObject_SetAttrString(bi, "WindowsError", PyExc_OSError);
+                Py_DECREF(bi);
+            } else {
+                PyErr_Clear();
+            }
+        }
+        /* Patch _ctypes with Windows-only symbols */
+        {
+            static PyMethodDef win_ctypes_methods[] = {
+                {"FormatError",    (PyCFunction)nop_str, METH_VARARGS, NULL},
+                {"LoadLibrary",    (PyCFunction)nop_int, METH_VARARGS, NULL},
+                {"_check_HRESULT", (PyCFunction)nop_int, METH_VARARGS, NULL},
+                {"get_last_error", (PyCFunction)nop_int, METH_VARARGS, NULL},
+                {"set_last_error", (PyCFunction)nop_int, METH_VARARGS, NULL},
+                {NULL}
+            };
+            PyObject *m = PyImport_ImportModule("_ctypes");
+            if (m) {
+                PyMethodDef *md;
+                if (!PyObject_HasAttrString(m, "FUNCFLAG_STDCALL"))
+                    PyModule_AddIntConstant(m, "FUNCFLAG_STDCALL", 0);
+                for (md = win_ctypes_methods; md->ml_name; md++) {
+                    if (!PyObject_HasAttrString(m, md->ml_name)) {
+                        PyObject *fn = PyCFunction_NewEx(md, NULL, NULL);
+                        if (fn) {
+                            PyObject_SetAttrString(m, md->ml_name, fn);
+                            Py_DECREF(fn);
+                        }
+                    }
+                }
+                Py_DECREF(m);
+            } else {
+                PyErr_Clear();
+            }
         }
     }
+
+    /* Patch _socket.socket type with Windows-only 'ioctl' method.
+     * The zip's socket.py is the Windows build and accesses this. */
+    {
+        PyObject *m = PyImport_ImportModule("_socket");
+        if (m) {
+            PyObject *sock_type = PyObject_GetAttrString(m, "socket");
+            if (sock_type && PyType_Check(sock_type)) {
+                PyTypeObject *tp = (PyTypeObject *)sock_type;
+                if (tp->tp_dict == NULL)
+                    PyType_Ready(tp);
+                if (tp->tp_dict && !PyDict_GetItemString(tp->tp_dict, "ioctl")) {
+                    static PyMethodDef ioctl_def = {
+                        "ioctl", (PyCFunction)nop_int, METH_VARARGS, NULL
+                    };
+                    PyObject *descr = PyDescr_NewMethod(tp, &ioctl_def);
+                    if (descr) {
+                        PyDict_SetItemString(tp->tp_dict, "ioctl", descr);
+                        Py_DECREF(descr);
+                        PyType_Modified(tp);
+                    } else {
+                        PyErr_Clear();
+                    }
+                }
+                Py_DECREF(sock_type);
+            } else {
+                PyErr_Clear();
+            }
+            /* Windows socket constants */
+            if (!PyObject_HasAttrString(m, "SIO_RCVALL"))
+                PyModule_AddIntConstant(m, "SIO_RCVALL", 0x98000001);
+            if (!PyObject_HasAttrString(m, "SIO_KEEPALIVE_VALS"))
+                PyModule_AddIntConstant(m, "SIO_KEEPALIVE_VALS", 0x98000004);
+            if (!PyObject_HasAttrString(m, "RCVALL_ON"))
+                PyModule_AddIntConstant(m, "RCVALL_ON", 1);
+            if (!PyObject_HasAttrString(m, "RCVALL_OFF"))
+                PyModule_AddIntConstant(m, "RCVALL_OFF", 0);
+            Py_DECREF(m);
+        } else {
+            PyErr_Clear();
+        }
+    }
+
+    /* Patch _ssl with Windows-only functions */
+    {
+        static PyMethodDef win_ssl_methods[] = {
+            {"enum_certificates", (PyCFunction)nop_list, METH_VARARGS, NULL},
+            {"enum_crls",         (PyCFunction)nop_list, METH_VARARGS, NULL},
+            {NULL}
+        };
+        PyObject *m = PyImport_ImportModule("_ssl");
+        if (m) {
+            PyMethodDef *md;
+            for (md = win_ssl_methods; md->ml_name; md++) {
+                if (!PyObject_HasAttrString(m, md->ml_name)) {
+                    PyObject *fn = PyCFunction_NewEx(md, NULL, NULL);
+                    if (fn) {
+                        PyObject_SetAttrString(m, md->ml_name, fn);
+                        Py_DECREF(fn);
+                    }
+                }
+            }
+            Py_DECREF(m);
+        } else {
+            PyErr_Clear();
+        }
+    }
+
+    /* DO NOT preload stdlib modules here. The goal is a standalone binary
+     * with no system Python dependency. All modules in scripts.zip are
+     * the Windows game build — fix platform differences via stubs/mocks
+     * in the Windows environment setup above, not by preloading stdlib. */
 
     /* Add _NamedConstantsType and gCPLBx86 to __builtin__ */
     builtin_mod = PyImport_ImportModule("__builtin__");
