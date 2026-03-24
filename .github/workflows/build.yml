@@ -1,0 +1,68 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential zlib1g-dev libssl-dev libffi-dev
+
+      - name: Fix submodule line endings
+        run: |
+          cd 3rdparty/cpython
+          git config core.autocrlf false
+          git checkout -- .
+
+      - name: Build Python 2.7.18
+        run: make python
+
+      - name: Build wows_shell
+        run: make
+
+      - name: Smoke test
+        run: |
+          ./wows_shell -c 'print "OK"' 2>&1 | grep OK
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp wows_shell dist/
+          cp -r helpers dist/
+          cp test_extract.py dist/
+          cp README.md dist/
+          tar czf wows_shell-linux-x86_64.tar.gz -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wows_shell-linux-x86_64
+          path: wows_shell-linux-x86_64.tar.gz
+
+  release:
+    needs: [build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wows_shell-linux-x86_64
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: wows_shell-linux-x86_64.tar.gz
+          generate_release_notes: true
