@@ -215,7 +215,17 @@ wows_decrypt_pyc(const unsigned char *pyc_data, Py_ssize_t pyc_len)
             if (!inner_code || !PyCode_Check(inner_code)) goto error;
         }
 
-        /* ── Stage 2+3: swap_map substitution + bit cipher → unmarshal ── */
+        /* ── Stage 2+3: swap_map substitution + bit cipher → unmarshal ──
+         *
+         * The inner code object contains a byte-substitution table
+         * (swap_map) at co_consts[8].co_consts[1]. Each byte of the
+         * XOR key is:
+         *   1. Looked up in swap_map (a dict or sequence: byte → byte)
+         *   2. XORed with 38
+         *   3. Bit-rotated: swap bit 0 and bit 7
+         *   4. XORed with 89
+         * The result is reversed and unmarshalled into stage3_code.
+         */
         {
             PyObject *inner_consts = ((PyCodeObject *)inner_code)->co_consts;
             PyObject *f123 = PyTuple_GET_ITEM(inner_consts, 8);
@@ -223,7 +233,6 @@ wows_decrypt_pyc(const unsigned char *pyc_data, Py_ssize_t pyc_len)
                 PyErr_SetString(PyExc_ValueError, "stage2: co_consts[8] not code");
                 goto error;
             }
-            /* swap_map can be a dict {int→int} or a tuple/list */
             PyObject *swap_map = PyTuple_GET_ITEM(
                 ((PyCodeObject *)f123)->co_consts, 1);
 
@@ -260,7 +269,10 @@ wows_decrypt_pyc(const unsigned char *pyc_data, Py_ssize_t pyc_len)
             if (!stage3_code || !PyCode_Check(stage3_code)) goto error;
         }
 
-        /* ── Stage 4: split by <<<>>>, reverse, base64, zlib, unmarshal ── */
+        /* ── Stage 4: extract payload from stage3_code.co_code ──
+         * The co_code contains: junk <<<>>> payload <<<>>> junk
+         * The payload is reversed, base64-decoded, zlib-decompressed,
+         * and unmarshalled into the final code object. */
         {
             const unsigned char *bc = (const unsigned char *)
                 PyString_AS_STRING(((PyCodeObject *)stage3_code)->co_code);

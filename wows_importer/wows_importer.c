@@ -98,6 +98,38 @@ WoWSImporter_init(WoWSImporter *self, PyObject *args, PyObject *kwds)
 }
 
 
+/*
+ * Check if "Parent.Leaf" refers to a top-level engine stub "Leaf"
+ * imported as a submodule of zip package "Parent".
+ * Returns a borrowed reference to the stub module, or NULL.
+ */
+static PyObject *
+find_engine_submodule(WoWSImporter *self, const char *fullname)
+{
+    const char *dot = strrchr(fullname, '.');
+    if (dot == NULL) return NULL;
+
+    char parent_name[512];
+    Py_ssize_t plen = dot - fullname;
+    if (plen >= (Py_ssize_t)sizeof(parent_name)) return NULL;
+
+    memcpy(parent_name, fullname, plen);
+    parent_name[plen] = '\0';
+
+    PyObject *pkey = PyString_FromString(parent_name);
+    int is_our_pkg = pkey && PySet_Contains(self->packages, pkey);
+    Py_XDECREF(pkey);
+    if (!is_our_pkg) return NULL;
+
+    const char *leaf = dot + 1;
+    PyObject *existing = PyDict_GetItemString(PyImport_GetModuleDict(), leaf);
+    if (existing != NULL && PyObject_HasAttrString(existing, "__wows_stub__"))
+        return existing;  /* borrowed ref */
+
+    return NULL;
+}
+
+
 /* ── find_module ─────────────────────────────────────────────────────── */
 
 static PyObject *
@@ -123,37 +155,10 @@ WoWSImporter_find_module(PyObject *obj, PyObject *args)
 
     Py_DECREF(key);
 
-    /* Engine submodule fallback: for dotted names like "Sound.EnvironmentManager"
-     * not in the zip, check if the parent IS a zip package and the last
-     * component exists as a top-level engine stub module.
-     * Only match against known engine stubs (modules without __file__
-     * that aren't stdlib C extensions). */
-    {
-        const char *dot = strrchr(fullname, '.');
-        if (dot != NULL) {
-            /* Check parent is a zip package we manage */
-            char parent_name[512];
-            Py_ssize_t plen = dot - fullname;
-            if (plen < (Py_ssize_t)sizeof(parent_name)) {
-                PyObject *pkey;
-                memcpy(parent_name, fullname, plen);
-                parent_name[plen] = '\0';
-                pkey = PyString_FromString(parent_name);
-                if (pkey && PySet_Contains(self->packages, pkey)) {
-                    const char *leaf = dot + 1;
-                    PyObject *existing = PyDict_GetItemString(
-                        PyImport_GetModuleDict(), leaf);
-                    /* Only match engine stubs, not stdlib modules */
-                    if (existing != NULL &&
-                        PyObject_HasAttrString(existing, "__wows_stub__")) {
-                        Py_DECREF(pkey);
-                        Py_INCREF(obj);
-                        return obj;
-                    }
-                }
-                Py_XDECREF(pkey);
-            }
-        }
+    /* Engine submodule fallback: "Sound.EnvironmentManager" → stub "EnvironmentManager" */
+    if (find_engine_submodule(self, fullname) != NULL) {
+        Py_INCREF(obj);
+        return obj;
     }
 
     Py_RETURN_NONE;
@@ -203,41 +208,29 @@ WoWSImporter_load_module(PyObject *obj, PyObject *args)
     }
 
     if (zip_entry_name == NULL) {
-        /* Engine submodule fallback: if "Package.X" is not in the zip
-         * but the parent IS a zip package and "X" exists as a top-level
-         * module, re-register it as "Package.X" and link to parent. */
-        const char *dot = strrchr(fullname, '.');
-        if (dot != NULL) {
-            char parent_name[512];
-            Py_ssize_t plen = dot - fullname;
-            if (plen < (Py_ssize_t)sizeof(parent_name)) {
-                memcpy(parent_name, fullname, plen);
-                parent_name[plen] = '\0';
-                PyObject *pkey = PyString_FromString(parent_name);
-                int is_our_pkg = pkey && PySet_Contains(self->packages, pkey);
-                Py_XDECREF(pkey);
+        /* Engine submodule fallback: re-register stub under dotted name */
+        PyObject *existing = find_engine_submodule(self, fullname);
+        if (existing != NULL) {
+            const char *dot = strrchr(fullname, '.');
+            Py_INCREF(existing);
+            PyDict_SetItemString(modules, fullname, existing);
 
-                if (is_our_pkg) {
-                    const char *leaf = dot + 1;
-                    PyObject *existing = PyDict_GetItemString(modules, leaf);
-                    if (existing != NULL &&
-                        PyObject_HasAttrString(existing, "__wows_stub__")) {
-                        /* Register under the dotted name */
-                        Py_INCREF(existing);
-                        PyDict_SetItemString(modules, fullname, existing);
-
-                        /* Link to parent package */
-                        PyObject *parent = PyDict_GetItemString(
-                            modules, parent_name);
-                        if (parent != NULL)
-                            PyObject_SetAttrString(parent, leaf, existing);
-
-                        Py_DECREF(key);
-                        Py_INCREF(existing);
-                        return existing;
-                    }
+            /* Link to parent package */
+            if (dot != NULL) {
+                char parent_name[512];
+                Py_ssize_t plen = dot - fullname;
+                if (plen < (Py_ssize_t)sizeof(parent_name)) {
+                    memcpy(parent_name, fullname, plen);
+                    parent_name[plen] = '\0';
+                    PyObject *parent = PyDict_GetItemString(modules, parent_name);
+                    if (parent != NULL)
+                        PyObject_SetAttrString(parent, dot + 1, existing);
                 }
             }
+
+            Py_DECREF(key);
+            Py_INCREF(existing);
+            return existing;
         }
 
         PyErr_Format(PyExc_ImportError, "No module named %s", fullname);
@@ -292,58 +285,29 @@ WoWSImporter_load_module(PyObject *obj, PyObject *args)
     PyDict_SetItemString(dict, "gCPLBx86",
                          PyString_FromString("1772650424"));
 
-    /* Pre-inject engine globals that the real client sets on every module.
-     * gLostConnection is an Event() used across many modules. Without this,
-     * circular imports fail because the partially-loaded module doesn't have
-     * gLostConnection yet when another module accesses it. */
+    /* Pre-inject gLostConnection — an Event() the engine sets on every
+     * module. Without this, circular imports fail when a partially-loaded
+     * module doesn't have gLostConnection yet. We cache one prototype
+     * and Py_INCREF it for each module (they're independent Event objects
+     * in the real engine, but a shared stub is fine for loading). */
     {
-        PyObject *event_mod = PyDict_GetItemString(modules, "Event");
-        if (event_mod != NULL) {
-            PyObject *event_cls = PyObject_GetAttrString(event_mod, "Event");
-            if (event_cls != NULL) {
-                PyObject *evt = PyObject_CallObject(event_cls, NULL);
-                if (evt != NULL) {
-                    PyDict_SetItemString(dict, "gLostConnection", evt);
-                    /* Don't DECREF evt — dict owns it now */
-                }
-                Py_DECREF(event_cls);
-            } else {
-                PyErr_Clear();
-            }
-        }
-    }
-
-    /* Pre-inject engine-provided attributes that downstream modules need.
-     * In the real game, the engine populates these before/during script load.
-     * We inject FlexBase types/instances so circular imports find them. */
-    {
-        PyObject *bw = PyDict_GetItemString(modules, "BigWorld");
-        PyObject *entity = NULL;
-        if (bw) {
-            entity = PyObject_GetAttrString(bw, "Entity");
-            if (!entity) PyErr_Clear();
-        }
-
-        if (strcmp(fullname, "SSE.SSEProxyCommon") == 0 && entity) {
-            PyDict_SetItemString(dict, "ISSEProxy", entity);
-        }
-        if (strcmp(fullname, "m81699590") == 0 && entity) {
-            /* AS_Point — ActionScript bridge point class */
-            PyDict_SetItemString(dict, "AS_Point", entity);
-        }
-        if (strcmp(fullname, "shared_constants.m124a8d32") == 0) {
-            /* createPersistentSSETask — engine-injected factory */
-            PyObject *none_fn = PyDict_GetItemString(modules, "BigWorld");
-            if (none_fn) {
-                PyObject *nop = PyObject_GetAttrString(none_fn, "callback");
-                if (nop) {
-                    PyDict_SetItemString(dict, "createPersistentSSETask", nop);
+        static PyObject *shared_gLostConnection = NULL;
+        if (shared_gLostConnection == NULL) {
+            PyObject *event_mod = PyDict_GetItemString(modules, "Event");
+            if (event_mod != NULL) {
+                PyObject *event_cls = PyObject_GetAttrString(event_mod, "Event");
+                if (event_cls != NULL) {
+                    shared_gLostConnection = PyObject_CallObject(event_cls, NULL);
+                    Py_DECREF(event_cls);
                 } else {
                     PyErr_Clear();
                 }
             }
         }
-        Py_XDECREF(entity);
+        if (shared_gLostConnection != NULL) {
+            Py_INCREF(shared_gLostConnection);
+            PyDict_SetItemString(dict, "gLostConnection", shared_gLostConnection);
+        }
     }
 
     /* Since we use PyEval_EvalCode instead of PyImport_ExecCodeModuleEx,
@@ -389,15 +353,9 @@ WoWSImporter_load_module(PyObject *obj, PyObject *args)
                                  PyString_FromString(""));
     }
 
-    /*
-     * Execute code in module namespace.
-     *
-     * We do NOT use PyImport_ExecCodeModuleEx because it calls
-     * remove_module() on failure, destroying partially-initialized
-     * state. Instead we exec directly into the module dict. This
-     * lets us recover from AssertionErrors while keeping whatever
-     * classes/functions were defined before the assertion fired.
-     */
+    /* Execute code in module namespace.
+     * We use PyEval_EvalCode directly (not PyImport_ExecCodeModuleEx)
+     * so we control error handling and module cleanup ourselves. */
     {
         PyObject *v = PyEval_EvalCode((PyCodeObject *)code, dict, dict);
         Py_DECREF(code);
