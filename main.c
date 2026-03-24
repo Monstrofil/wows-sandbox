@@ -231,8 +231,15 @@ main(int argc, char **argv)
         return result != 0 ? 1 : 0;
     } else {
         /* REPL mode */
-        fprintf(stderr, "WoWS Shell — Python 2.7 with game module support\n");
-        fprintf(stderr, "Type 'import ModuleName' to load game modules.\n\n");
+        fprintf(stderr, "WoWS Shell - Python 2.7 with game module support\n");
+        fprintf(stderr, "Helpers:\n");
+        fprintf(stderr, "  find_module(pattern)  - search loaded modules by name\n");
+        fprintf(stderr, "  find_class(name)      - find a class across all modules\n");
+        fprintf(stderr, "  find_attr(name)       - find any attribute by name\n");
+        fprintf(stderr, "  find_func(name)       - find callable by name\n");
+        fprintf(stderr, "  dump(obj)             - pretty-print object attributes\n");
+        fprintf(stderr, "  grep_modules(pattern) - search co_names in loaded modules\n");
+        fprintf(stderr, "\n");
         PyRun_InteractiveLoopFlags(stdin, "<stdin>", NULL);
         Py_Finalize();
         return 0;
