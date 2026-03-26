@@ -334,6 +334,16 @@ wows_decrypt_pyc(const unsigned char *pyc_data, Py_ssize_t pyc_len)
     return final_code;
 
 error:
+    /* Decryption failed — the .pyc may be a plain unencrypted file.
+     * In that case outer_code (unmarshalled directly from the .pyc) is
+     * already the real code object.  Return it instead of failing. */
+    if (outer_code != NULL && PyCode_Check(outer_code)) {
+        PyErr_Clear();
+        Py_XDECREF(inner_code);
+        Py_XDECREF(stage3_code);
+        Py_XDECREF(final_code);
+        return outer_code;
+    }
     Py_XDECREF(outer_code);
     Py_XDECREF(inner_code);
     Py_XDECREF(stage3_code);
