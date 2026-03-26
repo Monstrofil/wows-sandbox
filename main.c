@@ -149,24 +149,19 @@ main(int argc, char **argv)
     }
 
     /* Initialize Python.
-     * Set PYTHONHOME to 3rdparty/cpython/Lib so encodings and other
-     * bootstrap modules are found. Py_NoSiteFlag skips site.py. */
-    {
-        static char pylib[4096];
-        const char *slash;
-        strncpy(pylib, argv[0], sizeof(pylib) - 50);
-        pylib[sizeof(pylib) - 50] = '\0';
-        slash = strrchr(pylib, '/');
-        if (slash != NULL)
-            strcpy((char *)slash + 1, "3rdparty/cpython");
-        else
-            strcpy(pylib, "3rdparty/cpython");
-        Py_SetPythonHome(pylib);
-        Py_NoSiteFlag = 1;
-    }
+     * All modules (including stdlib) come from scripts.zip via our
+     * custom importer — no PYTHONHOME or filesystem stdlib needed.
+     * Py_NoSiteFlag skips site.py. */
+    Py_NoSiteFlag = 1;
     Py_SetProgramName(argv[0]);
     Py_Initialize();
     PySys_SetArgvEx(argc, argv, 0);
+
+    /* Python needs Py_FileSystemDefaultEncoding for unicode() calls.
+     * Without PYTHONHOME, the encodings package isn't found at startup
+     * so this stays NULL. Set a sensible default. */
+    if (Py_FileSystemDefaultEncoding == NULL)
+        Py_FileSystemDefaultEncoding = "utf-8";
 
     /* GC is safe — stub classes override tp_new to untrack all instances
      * (see _stub_tp_new in common.h), preventing GC from traversing

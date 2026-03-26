@@ -182,6 +182,7 @@ WoWSImporter_load_module(PyObject *obj, PyObject *args)
     if (!PyArg_ParseTuple(args, "s:load_module", &fullname))
         return NULL;
 
+
     /* Already loaded? */
     modules = PyImport_GetModuleDict();
     mod = PyDict_GetItemString(modules, fullname);
@@ -361,8 +362,22 @@ WoWSImporter_load_module(PyObject *obj, PyObject *args)
         Py_DECREF(code);
         Py_DECREF(key);
 
+        /* The module's code may have replaced sys.modules[fullname]
+         * with a different object (e.g. a lazy-loader wrapper, or
+         * the deobfuscation layer swapping module objects). If so,
+         * we must return the replacement — not the original. This
+         * mirrors CPython's own import.c:import_submodule behaviour. */
+        {
+            PyObject *replaced = PyDict_GetItemString(modules, fullname);
+            if (replaced != NULL && replaced != mod) {
+                mod = replaced;
+                dict = PyModule_GetDict(mod);  /* update dict pointer too */
+            }
+        }
+
         if (v != NULL) {
             Py_DECREF(v);
+
 
             /* Link submodule to parent package.
              * Standard Python importers do this — when X.Y is loaded,

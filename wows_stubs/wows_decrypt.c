@@ -250,8 +250,9 @@ wows_decrypt_pyc(const unsigned char *pyc_data, Py_ssize_t pyc_len)
                         Py_DECREF(k);
                         mapped = (v != NULL) ? PyInt_AsLong(v) : 0;
                     } else {
-                        mapped = PyInt_AsLong(
-                            PySequence_GetItem(swap_map, key[i]));
+                        PyObject *item = PySequence_GetItem(swap_map, key[i]);
+                        mapped = (item != NULL) ? PyInt_AsLong(item) : 0;
+                        Py_XDECREF(item);
                     }
                     unsigned char vv = (unsigned char)(mapped ^ 38);
                     vv = ((vv & 126) | ((vv >> 7) & 1) | ((vv & 1) << 7));
