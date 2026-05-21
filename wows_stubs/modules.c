@@ -431,6 +431,8 @@ STUB_MODULE_METHODS(util_UIMath, "util.UIMath", util_UIMath_methods)
 
 STUB_MODULE(debug_utils, "debug_utils")
 STUB_MODULE(chat_shared, "chat_shared")
+STUB_MODULE(DataCollection, "DataCollection")
+STUB_MODULE(RazerIntegration, "RazerIntegration")
 STUB_MODULE(bwobsolete_helpers, "bwobsolete_helpers")
 STUB_MODULE(account_helpers, "account_helpers")
 STUB_MODULE(items, "items")

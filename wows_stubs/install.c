@@ -64,6 +64,8 @@ PyObject *init_util_UIMath(void);
 /* Pure empty stubs */
 PyObject *init_debug_utils(void);
 PyObject *init_chat_shared(void);
+PyObject *init_DataCollection(void);
+PyObject *init_RazerIntegration(void);
 PyObject *init_bwobsolete_helpers(void);
 PyObject *init_account_helpers(void);
 PyObject *init_items(void);
@@ -125,6 +127,8 @@ wows_stubs_install(void)
     /* Game infrastructure */
     INIT_STUB(debug_utils);
     INIT_STUB(chat_shared);
+    INIT_STUB(DataCollection);
+    INIT_STUB(RazerIntegration);
     INIT_STUB(bwobsolete_helpers);
     INIT_STUB(account_helpers);
     INIT_STUB(items);
