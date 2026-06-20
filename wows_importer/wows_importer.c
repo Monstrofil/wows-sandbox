@@ -9,6 +9,69 @@
 #include "../zip_reader/zip_reader.h"
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
+
+/* ── Junk-name pre-seed ──────────────────────────────────────────────────
+ *
+ * WG's obfuscator litters module bodies with opaque-predicate blocks that
+ * STORE_NAME random "junk" variables into the module globals. These junk
+ * names are non-identifiers (they contain spaces/punctuation), so they can
+ * never collide with real code. The catch: when such a STORE_NAME lands
+ * between a `for k in globals()` generator's iter-snapshot and its
+ * consumption (e.g. the trailing `__all__ = [n for n in globals() ...]` in
+ * types.py), it grows the dict mid-iteration and CPython 2.7 raises
+ * "dictionary changed size during iteration".
+ *
+ * The real client avoids this by pre-populating the module dict with those
+ * junk names before executing the body, so every such STORE_NAME is a
+ * value-replace (dict size stays constant). We replicate that here: seed
+ * every non-identifier name found in the code object's co_names (recursing
+ * into nested code objects) with None. Safe because real names are always
+ * valid identifiers and are left untouched. */
+
+static int
+is_py_identifier(const char *s, Py_ssize_t n)
+{
+    Py_ssize_t i;
+    if (n <= 0) return 0;
+    if (!(isalpha((unsigned char)s[0]) || s[0] == '_')) return 0;
+    for (i = 1; i < n; i++)
+        if (!(isalnum((unsigned char)s[i]) || s[i] == '_')) return 0;
+    return 1;
+}
+
+static void
+preseed_junk_names(PyObject *dict, PyCodeObject *co, int depth)
+{
+    Py_ssize_t i, nnames, nconsts;
+    PyObject *names, *consts;
+
+    if (co == NULL || depth > 64) return;
+
+    names = co->co_names;
+    if (names && PyTuple_Check(names)) {
+        nnames = PyTuple_GET_SIZE(names);
+        for (i = 0; i < nnames; i++) {
+            PyObject *nm = PyTuple_GET_ITEM(names, i);
+            if (!PyString_Check(nm)) continue;
+            if (is_py_identifier(PyString_AS_STRING(nm), PyString_GET_SIZE(nm)))
+                continue;                 /* real name — leave alone */
+            if (PyDict_GetItem(dict, nm) != NULL)
+                continue;                 /* already present */
+            PyDict_SetItem(dict, nm, Py_None);
+        }
+    }
+
+    consts = co->co_consts;
+    if (consts && PyTuple_Check(consts)) {
+        nconsts = PyTuple_GET_SIZE(consts);
+        for (i = 0; i < nconsts; i++) {
+            PyObject *c = PyTuple_GET_ITEM(consts, i);
+            if (PyCode_Check(c))
+                preseed_junk_names(dict, (PyCodeObject *)c, depth + 1);
+        }
+    }
+}
 
 /* ── WoWSImporter type ───────────────────────────────────────────────── */
 
@@ -353,6 +416,11 @@ WoWSImporter_load_module(PyObject *obj, PyObject *args)
             PyDict_SetItemString(dict, "__package__",
                                  PyString_FromString(""));
     }
+
+    /* Pre-seed the module globals with the obfuscator's junk names so that
+     * opaque-predicate STORE_NAMEs are value-replaces and never grow the
+     * dict mid-iteration (matches the WG client loader). */
+    preseed_junk_names(dict, (PyCodeObject *)code, 0);
 
     /* Execute code in module namespace.
      * We use PyEval_EvalCode directly (not PyImport_ExecCodeModuleEx)
