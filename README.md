@@ -129,7 +129,7 @@ Each `.pyc` in the zip is encrypted with a 4-stage pipeline:
 The game's Python scripts import engine-provided C modules (`BigWorld`, `Lesta`, `Math`, `ResMgr`, etc.) that don't exist outside the game client. We provide NOP implementations:
 
 - **FlexBase**: a universal base type whose `__getattr__` returns new instances (handles arbitrary attribute access)
-- **DataSection**: returned by `ResMgr.openSection()`, supports `readString()`, `readInt()`, `children()`, etc.
+- **DataSection**: returned by `ResMgr.openSection()` and exported as `ResMgr.DataSection` (imported directly since 15.7.0), supports `readString()`, `readInt()`, `children()`, etc.
 - **MathObj**: used as Vector2/3/4, Matrix — supports arithmetic operators
 - **Event**: observer pattern with `__iadd__`/`__isub__`/`__call__`
 
