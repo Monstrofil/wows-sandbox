@@ -5,8 +5,10 @@
 
 static PyObject *DataSection_class = NULL;
 
-PyObject *
-ResMgr_openSection(PyObject *self, PyObject *args, PyObject *kwargs)
+/* Lazily build the DataSection stub class. Borrowed reference (kept alive
+ * for the process lifetime); NULL on failure. */
+static PyObject *
+get_DataSection_class(void)
 {
     if (DataSection_class == NULL) {
         PyObject *d = PyDict_New();
@@ -42,9 +44,16 @@ ResMgr_openSection(PyObject *self, PyObject *args, PyObject *kwargs)
         Py_XINCREF(DataSection_class);
         gc_untrack_class_and_dict(DataSection_class, d);
     }
-    if (DataSection_class == NULL)
+    return DataSection_class;
+}
+
+PyObject *
+ResMgr_openSection(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    PyObject *cls = get_DataSection_class();
+    if (cls == NULL)
         Py_RETURN_NONE;
-    return PyObject_CallObject(DataSection_class, NULL);
+    return PyObject_CallObject(cls, NULL);
 }
 
 static PyMethodDef ResMgr_methods[] = {
@@ -58,5 +67,16 @@ static PyMethodDef ResMgr_methods[] = {
 
 PyObject *init_ResMgr(void)
 {
-    return make_module("ResMgr", ResMgr_methods, "ResMgr stub");
+    PyObject *m = make_module("ResMgr", ResMgr_methods, "ResMgr stub");
+    /* Since 15.7.0 CameraTrajectoryStorage does `from ResMgr import
+     * DataSection` at module level (used for type annotations / isinstance),
+     * so the class must be exported as a module attribute, not only returned
+     * from openSection(). Without it the BWPersonality boot chain aborts in
+     * LobbySpace.EllipticPoITrajectories. */
+    PyObject *cls = get_DataSection_class();
+    if (m != NULL && cls != NULL) {
+        Py_INCREF(cls);
+        PyModule_AddObject(m, "DataSection", cls);
+    }
+    return m;
 }

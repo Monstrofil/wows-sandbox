@@ -432,7 +432,13 @@ STUB_MODULE_METHODS(util_UIMath, "util.UIMath", util_UIMath_methods)
 STUB_MODULE(debug_utils, "debug_utils")
 STUB_MODULE(chat_shared, "chat_shared")
 STUB_MODULE(DataCollection, "DataCollection")
-STUB_MODULE(RazerIntegration, "RazerIntegration")
+/* RazerIntegration: Razer Chroma SDK bridge, never in scripts.zip. Since
+ * 15.7.0 RazerChromaIntegrationSystem imports these two names at module
+ * level, so an empty module breaks the BWPersonality boot chain. */
+static PyMethodDef RazerIntegration_methods[] = {
+    NOP_FALSE(isWyvrnInitialized), NOP_VARARGS(setEventName), END
+};
+STUB_MODULE_METHODS(RazerIntegration, "RazerIntegration", RazerIntegration_methods)
 STUB_MODULE(bwobsolete_helpers, "bwobsolete_helpers")
 STUB_MODULE(account_helpers, "account_helpers")
 STUB_MODULE(items, "items")
